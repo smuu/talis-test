@@ -22,14 +22,17 @@ func expandPath(path string) string {
 
 // Config holds the application configuration
 type Config struct {
-	BaseURL            string
-	Username           string
-	ProjectName        string
-	ProjectDescription string
-	InstanceCount      int
-	InstanceConfig     InstanceConfig
-	SSHUsername        string
-	SSHPrivateKeyPath  string
+	BaseURL             string
+	Username            string
+	ProjectName         string
+	ProjectDescription  string
+	InstanceCount       int
+	InstanceConfig      InstanceConfig
+	SSHUsername         string
+	SSHPrivateKeyPath   string
+	GoVersion           string
+	CelestiaAppVersion  string
+	CelestiaNodeVersion string
 }
 
 // InstanceConfig holds the configuration for creating instances
@@ -54,13 +57,16 @@ type VolumeConfig struct {
 // DefaultConfig returns a default configuration
 func DefaultConfig() Config {
 	cfg := Config{
-		BaseURL:            "http://localhost:8080",
-		Username:           "test",
-		ProjectName:        "test",
-		ProjectDescription: "test",
-		InstanceCount:      2,
-		SSHUsername:        "root",
-		SSHPrivateKeyPath:  "~/.ssh/digitalocean",
+		BaseURL:             "http://localhost:8080",
+		Username:            "test",
+		ProjectName:         "test",
+		ProjectDescription:  "test",
+		InstanceCount:       1,
+		SSHUsername:         "root",
+		SSHPrivateKeyPath:   "~/.ssh/digitalocean",
+		GoVersion:           "1.23.0",
+		CelestiaAppVersion:  "v3.8.1",
+		CelestiaNodeVersion: "v0.22.1",
 		InstanceConfig: InstanceConfig{
 			Provider:   models.ProviderID("do"),
 			Region:     "nyc1",

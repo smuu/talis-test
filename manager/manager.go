@@ -148,8 +148,16 @@ func (m *TalisManager) InstallGoOnInstances(ctx context.Context) error {
 
 			log.Printf("Checking Go installation on instance %s...", inst.PublicIP)
 
-			// Check if Go is already installed
-			err := m.sshManager.ExecuteCommand(inst.PublicIP, "which go")
+			// Check if Go is installed in common locations
+			checkCmd := `
+if [ -x "/usr/local/go/bin/go" ] || [ -x "$HOME/go/bin/go" ] || command -v go > /dev/null 2>&1; then
+    echo "Go is installed"
+    exit 0
+else
+    echo "Go is not installed"
+    exit 1
+fi`
+			err := m.sshManager.ExecuteCommand(inst.PublicIP, checkCmd)
 			if err == nil {
 				log.Printf("Go is already installed on instance %s", inst.PublicIP)
 				return
@@ -157,33 +165,15 @@ func (m *TalisManager) InstallGoOnInstances(ctx context.Context) error {
 
 			log.Printf("Installing Go on instance %s...", inst.PublicIP)
 
-			// Download and install Go
-			installCommands := []string{
-				"cd $HOME",
-				// Install required packages
-				"sudo apt update",
-				"sudo apt install -y curl tar wget aria2 clang pkg-config libssl-dev jq build-essential git make ncdu",
-				// Install Go
-				"ver=\"1.23.0\"",
-				"wget \"https://golang.org/dl/go$ver.linux-amd64.tar.gz\"",
-				"sudo rm -rf /usr/local/go",
-				"sudo tar -C /usr/local -xzf \"go$ver.linux-amd64.tar.gz\"",
-				"rm \"go$ver.linux-amd64.tar.gz\"",
-				// Add PATH to bash_profile and current session
-				"echo 'export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin' >> $HOME/.bash_profile",
-				"export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin",
-			}
-
-			// Execute commands in a single shell session to maintain environment variables
-			combinedCmd := strings.Join(installCommands, " && ")
-			if err := m.sshManager.ExecuteCommand(inst.PublicIP, combinedCmd); err != nil {
-				errChan <- fmt.Errorf("failed to execute Go installation commands on instance %s: %w", inst.PublicIP, err)
+			// Copy the installation script to the remote machine
+			if err := m.sshManager.CopyFile(inst.PublicIP, "scripts/install_go.sh", "install_go.sh"); err != nil {
+				errChan <- fmt.Errorf("failed to copy installation script to instance %s: %w", inst.PublicIP, err)
 				return
 			}
 
-			// Verify Go installation
-			if err := m.sshManager.ExecuteCommand(inst.PublicIP, "go version"); err != nil {
-				errChan <- fmt.Errorf("failed to verify Go installation on instance %s: %w", inst.PublicIP, err)
+			// Make the script executable and run it
+			if err := m.sshManager.ExecuteCommand(inst.PublicIP, fmt.Sprintf("chmod +x install_go.sh && ./install_go.sh %s", m.config.GoVersion)); err != nil {
+				errChan <- fmt.Errorf("failed to execute Go installation script on instance %s: %w", inst.PublicIP, err)
 				return
 			}
 
@@ -205,7 +195,161 @@ func (m *TalisManager) InstallGoOnInstances(ctx context.Context) error {
 	return nil
 }
 
-// Run executes both stages of the workflow
+// InstallCelestiaAppOnInstances installs Celestia App on all instances
+func (m *TalisManager) InstallCelestiaAppOnInstances(ctx context.Context) error {
+	// Load state
+	state, err := m.LoadState()
+	if err != nil {
+		return fmt.Errorf("failed to load state: %w", err)
+	}
+	m.state = state
+
+	// Create a semaphore to limit concurrent installations
+	sem := make(chan struct{}, 10)
+	errChan := make(chan error, len(m.state.Instances[m.config.ProjectName]))
+	var wg sync.WaitGroup
+
+	// For each instance, install Celestia App
+	for _, instance := range m.state.Instances[m.config.ProjectName] {
+		if instance.PublicIP == "" {
+			log.Printf("Skipping instance %d: no public IP", instance.ID)
+			continue
+		}
+
+		wg.Add(1)
+		go func(inst InstanceInfo) {
+			defer wg.Done()
+
+			// Acquire semaphore
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			// Check if Celestia App is already installed
+			log.Printf("Checking Celestia App installation on instance %s...", inst.PublicIP)
+			checkCmd := `
+if [ -x "/usr/local/bin/celestia-appd" ] || [ -x "$HOME/go/bin/celestia-appd" ] || [ -x "/root/celestia-app-temp/celestia-appd" ] || command -v celestia-appd > /dev/null 2>&1; then
+    echo "Celestia App is installed"
+    exit 0
+else
+    echo "Celestia App is not installed"
+    exit 1
+fi`
+			err := m.sshManager.ExecuteCommand(inst.PublicIP, checkCmd)
+			if err == nil {
+				log.Printf("Celestia App is already installed on instance %s", inst.PublicIP)
+				return
+			}
+
+			log.Printf("Installing Celestia App on instance %s...", inst.PublicIP)
+
+			// Copy the installation script to the remote machine
+			if err := m.sshManager.CopyFile(inst.PublicIP, "scripts/install_celestia_app.sh", "install_celestia_app.sh"); err != nil {
+				errChan <- fmt.Errorf("failed to copy installation script to instance %s: %w", inst.PublicIP, err)
+				return
+			}
+
+			// Make the script executable and run it
+			if err := m.sshManager.ExecuteCommand(inst.PublicIP, fmt.Sprintf("chmod +x install_celestia_app.sh && ./install_celestia_app.sh %s", m.config.CelestiaAppVersion)); err != nil {
+				errChan <- fmt.Errorf("failed to execute Celestia App installation script on instance %s: %w", inst.PublicIP, err)
+				return
+			}
+
+			log.Printf("Successfully installed Celestia App on instance %s", inst.PublicIP)
+		}(instance)
+	}
+
+	// Wait for all goroutines to complete
+	wg.Wait()
+	close(errChan)
+
+	// Check for any errors
+	for err := range errChan {
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// InstallCelestiaNodeOnInstances installs Celestia Node on all instances
+func (m *TalisManager) InstallCelestiaNodeOnInstances(ctx context.Context) error {
+	// Load state
+	state, err := m.LoadState()
+	if err != nil {
+		return fmt.Errorf("failed to load state: %w", err)
+	}
+	m.state = state
+
+	// Create a semaphore to limit concurrent installations
+	sem := make(chan struct{}, 10)
+	errChan := make(chan error, len(m.state.Instances[m.config.ProjectName]))
+	var wg sync.WaitGroup
+
+	// For each instance, install Celestia Node
+	for _, instance := range m.state.Instances[m.config.ProjectName] {
+		if instance.PublicIP == "" {
+			log.Printf("Skipping instance %d: no public IP", instance.ID)
+			continue
+		}
+
+		wg.Add(1)
+		go func(inst InstanceInfo) {
+			defer wg.Done()
+
+			// Acquire semaphore
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			// Check if Celestia Node is already installed
+			log.Printf("Checking Celestia Node installation on instance %s...", inst.PublicIP)
+			checkCmd := `
+if [ -x "/usr/local/bin/celestia" ] || [ -x "$HOME/go/bin/celestia" ] || [ -x "/root/celestia-node-temp/celestia" ] || command -v celestia > /dev/null 2>&1; then
+    echo "Celestia Node is installed"
+    exit 0
+else
+    echo "Celestia Node is not installed"
+    exit 1
+fi`
+			err := m.sshManager.ExecuteCommand(inst.PublicIP, checkCmd)
+			if err == nil {
+				log.Printf("Celestia Node is already installed on instance %s", inst.PublicIP)
+				return
+			}
+
+			log.Printf("Installing Celestia Node on instance %s...", inst.PublicIP)
+
+			// Copy the installation script to the remote machine
+			if err := m.sshManager.CopyFile(inst.PublicIP, "scripts/install_celestia_node.sh", "install_celestia_node.sh"); err != nil {
+				errChan <- fmt.Errorf("failed to copy installation script to instance %s: %w", inst.PublicIP, err)
+				return
+			}
+
+			// Make the script executable and run it
+			if err := m.sshManager.ExecuteCommand(inst.PublicIP, fmt.Sprintf("chmod +x install_celestia_node.sh && ./install_celestia_node.sh %s", m.config.CelestiaNodeVersion)); err != nil {
+				errChan <- fmt.Errorf("failed to execute Celestia Node installation script on instance %s: %w", inst.PublicIP, err)
+				return
+			}
+
+			log.Printf("Successfully installed Celestia Node on instance %s", inst.PublicIP)
+		}(instance)
+	}
+
+	// Wait for all goroutines to complete
+	wg.Wait()
+	close(errChan)
+
+	// Check for any errors
+	for err := range errChan {
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// Run executes all stages of the workflow
 func (m *TalisManager) Run(ctx context.Context) error {
 	// Stage 1: Prepare infrastructure
 	if err := m.PrepareInfrastructure(ctx); err != nil {
@@ -215,6 +359,16 @@ func (m *TalisManager) Run(ctx context.Context) error {
 	// Stage 2: Install Go on instances
 	if err := m.InstallGoOnInstances(ctx); err != nil {
 		return fmt.Errorf("failed to install Go on instances: %w", err)
+	}
+
+	// Stage 3: Install Celestia App on instances
+	if err := m.InstallCelestiaAppOnInstances(ctx); err != nil {
+		return fmt.Errorf("failed to install Celestia App on instances: %w", err)
+	}
+
+	// Stage 4: Install Celestia Node on instances
+	if err := m.InstallCelestiaNodeOnInstances(ctx); err != nil {
+		return fmt.Errorf("failed to install Celestia Node on instances: %w", err)
 	}
 
 	return nil
