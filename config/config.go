@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/celestiaorg/talis/pkg/models"
+	"github.com/celestiaorg/talis/pkg/db/models"
 )
 
 // expandPath expands $HOME and ~ in the given path
@@ -20,19 +20,32 @@ func expandPath(path string) string {
 	return os.ExpandEnv(path)
 }
 
+// ProviderFromString converts a string to a ProviderID
+func ProviderFromString(provider string) models.ProviderID {
+	return models.ProviderID(provider)
+}
+
 // Config holds the application configuration
 type Config struct {
 	BaseURL             string
+	APIKey              string
 	Username            string
 	ProjectName         string
 	ProjectDescription  string
-	InstanceCount       int
-	InstanceConfig      InstanceConfig
+	Instances           []InstanceDefinition
 	SSHUsername         string
 	SSHPrivateKeyPath   string
 	GoVersion           string
 	CelestiaAppVersion  string
 	CelestiaNodeVersion string
+}
+
+// InstanceDefinition defines a single instance with its configuration
+type InstanceDefinition struct {
+	Name                string
+	InstanceConfig      InstanceConfig
+	InstallCelestiaApp  bool
+	InstallCelestiaNode bool
 }
 
 // InstanceConfig holds the configuration for creating instances
@@ -54,19 +67,12 @@ type VolumeConfig struct {
 	MountPoint string
 }
 
-// DefaultConfig returns a default configuration
-func DefaultConfig() Config {
-	cfg := Config{
-		BaseURL:             "http://localhost:8080",
-		Username:            "test",
-		ProjectName:         "test",
-		ProjectDescription:  "test",
-		InstanceCount:       1,
-		SSHUsername:         "root",
-		SSHPrivateKeyPath:   "~/.ssh/digitalocean",
-		GoVersion:           "1.23.0",
-		CelestiaAppVersion:  "v3.8.1",
-		CelestiaNodeVersion: "v0.22.1",
+// NewInstanceDefinition creates a new instance definition with default values
+func NewInstanceDefinition(name string, installApp, installNode bool) InstanceDefinition {
+	return InstanceDefinition{
+		Name:                name,
+		InstallCelestiaApp:  installApp,
+		InstallCelestiaNode: installNode,
 		InstanceConfig: InstanceConfig{
 			Provider:   models.ProviderID("do"),
 			Region:     "nyc1",
@@ -82,10 +88,55 @@ func DefaultConfig() Config {
 			},
 		},
 	}
+}
+
+// WithRegion sets the region for the instance
+func (i InstanceDefinition) WithRegion(region string) InstanceDefinition {
+	i.InstanceConfig.Region = region
+	return i
+}
+
+// WithSize sets the size for the instance
+func (i InstanceDefinition) WithSize(size string) InstanceDefinition {
+	i.InstanceConfig.Size = size
+	return i
+}
+
+// WithVolumeSize sets the volume size for the instance
+func (i InstanceDefinition) WithVolumeSize(sizeGB int) InstanceDefinition {
+	i.InstanceConfig.VolumeConfig.SizeGB = sizeGB
+	return i
+}
+
+// WithProvider sets the provider for the instance
+func (i InstanceDefinition) WithProvider(provider string) InstanceDefinition {
+	i.InstanceConfig.Provider = ProviderFromString(provider)
+	return i
+}
+
+// DefaultConfig returns a default configuration
+func DefaultConfig() Config {
+	cfg := Config{
+		BaseURL:             "http://163.172.162.109:8000/talis/",
+		APIKey:              os.Getenv("TALIS_KEY"),
+		Username:            "test",
+		ProjectName:         "test",
+		ProjectDescription:  "test",
+		SSHUsername:         "root",
+		SSHPrivateKeyPath:   "~/.ssh/digitalocean",
+		GoVersion:           "1.23.0",
+		CelestiaAppVersion:  "v3.8.1",
+		CelestiaNodeVersion: "v0.22.1",
+		Instances: []InstanceDefinition{
+			NewInstanceDefinition("default", true, false),
+		},
+	}
 
 	// Expand paths
 	cfg.SSHPrivateKeyPath = expandPath(cfg.SSHPrivateKeyPath)
-	cfg.InstanceConfig.SSHKeyPath = expandPath(cfg.InstanceConfig.SSHKeyPath)
+	for i := range cfg.Instances {
+		cfg.Instances[i].InstanceConfig.SSHKeyPath = expandPath(cfg.Instances[i].InstanceConfig.SSHKeyPath)
+	}
 
 	return cfg
 }

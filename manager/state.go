@@ -11,6 +11,8 @@ type InstanceInfo struct {
 	ID       uint   `json:"id"`
 	Name     string `json:"name"`
 	PublicIP string `json:"public_ip"`
+	// Installation preferences are now determined at runtime from the configuration
+	// rather than stored in the state
 }
 
 // State represents the persisted state of the application

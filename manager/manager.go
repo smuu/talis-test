@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -12,7 +13,7 @@ import (
 	"github.com/celestiaorg/talis-test/config"
 	"github.com/celestiaorg/talis/pkg/api/v1/client"
 	"github.com/celestiaorg/talis/pkg/api/v1/handlers"
-	"github.com/celestiaorg/talis/pkg/models"
+	"github.com/celestiaorg/talis/pkg/db/models"
 	"github.com/celestiaorg/talis/pkg/types"
 )
 
@@ -28,6 +29,9 @@ type TalisManager struct {
 func NewTalisManager(config config.Config) (*TalisManager, error) {
 	opts := client.DefaultOptions()
 	opts.BaseURL = config.BaseURL
+	opts.APIKey = os.Getenv("TALIS_KEY")
+
+	fmt.Println("API Key:", opts.APIKey)
 
 	client, err := client.NewClient(opts)
 	if err != nil {
@@ -195,7 +199,7 @@ fi`
 	return nil
 }
 
-// InstallCelestiaAppOnInstances installs Celestia App on all instances
+// InstallCelestiaAppOnInstances installs Celestia App on selected instances
 func (m *TalisManager) InstallCelestiaAppOnInstances(ctx context.Context) error {
 	// Load state
 	state, err := m.LoadState()
@@ -209,25 +213,32 @@ func (m *TalisManager) InstallCelestiaAppOnInstances(ctx context.Context) error 
 	errChan := make(chan error, len(m.state.Instances[m.config.ProjectName]))
 	var wg sync.WaitGroup
 
-	// For each instance, install Celestia App
-	for _, instance := range m.state.Instances[m.config.ProjectName] {
+	// For each instance, check and install Celestia App if needed and if selected for this instance
+	for i, instance := range m.state.Instances[m.config.ProjectName] {
 		if instance.PublicIP == "" {
 			log.Printf("Skipping instance %d: no public IP", instance.ID)
 			continue
 		}
 
+		// Skip instances where Celestia App installation is not requested
+		if i >= len(m.config.Instances) || !m.config.Instances[i].InstallCelestiaApp {
+			log.Printf("Skipping Celestia App installation on instance %s (%s): not requested", instance.Name, instance.PublicIP)
+			continue
+		}
+
 		wg.Add(1)
-		go func(inst InstanceInfo) {
+		go func(inst InstanceInfo, instDef config.InstanceDefinition) {
 			defer wg.Done()
 
 			// Acquire semaphore
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			// Check if Celestia App is already installed
-			log.Printf("Checking Celestia App installation on instance %s...", inst.PublicIP)
+			log.Printf("Checking Celestia App installation on instance %s (%s)...", inst.Name, inst.PublicIP)
+
+			// Check if Celestia App is installed
 			checkCmd := `
-if [ -x "/usr/local/bin/celestia-appd" ] || [ -x "$HOME/go/bin/celestia-appd" ] || [ -x "/root/celestia-app-temp/celestia-appd" ] || command -v celestia-appd > /dev/null 2>&1; then
+if [ -d "$HOME/celestia-app" ] && [ -x "$HOME/go/bin/celestia-appd" ]; then
     echo "Celestia App is installed"
     exit 0
 else
@@ -236,26 +247,26 @@ else
 fi`
 			err := m.sshManager.ExecuteCommand(inst.PublicIP, checkCmd)
 			if err == nil {
-				log.Printf("Celestia App is already installed on instance %s", inst.PublicIP)
+				log.Printf("Celestia App is already installed on instance %s (%s)", inst.Name, inst.PublicIP)
 				return
 			}
 
-			log.Printf("Installing Celestia App on instance %s...", inst.PublicIP)
+			log.Printf("Installing Celestia App on instance %s (%s)...", inst.Name, inst.PublicIP)
 
 			// Copy the installation script to the remote machine
 			if err := m.sshManager.CopyFile(inst.PublicIP, "scripts/install_celestia_app.sh", "install_celestia_app.sh"); err != nil {
-				errChan <- fmt.Errorf("failed to copy installation script to instance %s: %w", inst.PublicIP, err)
+				errChan <- fmt.Errorf("failed to copy installation script to instance %s (%s): %w", inst.Name, inst.PublicIP, err)
 				return
 			}
 
 			// Make the script executable and run it
 			if err := m.sshManager.ExecuteCommand(inst.PublicIP, fmt.Sprintf("chmod +x install_celestia_app.sh && ./install_celestia_app.sh %s", m.config.CelestiaAppVersion)); err != nil {
-				errChan <- fmt.Errorf("failed to execute Celestia App installation script on instance %s: %w", inst.PublicIP, err)
+				errChan <- fmt.Errorf("failed to execute Celestia App installation script on instance %s (%s): %w", inst.Name, inst.PublicIP, err)
 				return
 			}
 
-			log.Printf("Successfully installed Celestia App on instance %s", inst.PublicIP)
-		}(instance)
+			log.Printf("Successfully installed Celestia App on instance %s (%s)", inst.Name, inst.PublicIP)
+		}(instance, m.config.Instances[i])
 	}
 
 	// Wait for all goroutines to complete
@@ -272,7 +283,7 @@ fi`
 	return nil
 }
 
-// InstallCelestiaNodeOnInstances installs Celestia Node on all instances
+// InstallCelestiaNodeOnInstances installs Celestia Node on selected instances
 func (m *TalisManager) InstallCelestiaNodeOnInstances(ctx context.Context) error {
 	// Load state
 	state, err := m.LoadState()
@@ -286,25 +297,32 @@ func (m *TalisManager) InstallCelestiaNodeOnInstances(ctx context.Context) error
 	errChan := make(chan error, len(m.state.Instances[m.config.ProjectName]))
 	var wg sync.WaitGroup
 
-	// For each instance, install Celestia Node
-	for _, instance := range m.state.Instances[m.config.ProjectName] {
+	// For each instance, check and install Celestia Node if needed and if selected for this instance
+	for i, instance := range m.state.Instances[m.config.ProjectName] {
 		if instance.PublicIP == "" {
 			log.Printf("Skipping instance %d: no public IP", instance.ID)
 			continue
 		}
 
+		// Skip instances where Celestia Node installation is not requested
+		if i >= len(m.config.Instances) || !m.config.Instances[i].InstallCelestiaNode {
+			log.Printf("Skipping Celestia Node installation on instance %s (%s): not requested", instance.Name, instance.PublicIP)
+			continue
+		}
+
 		wg.Add(1)
-		go func(inst InstanceInfo) {
+		go func(inst InstanceInfo, instDef config.InstanceDefinition) {
 			defer wg.Done()
 
 			// Acquire semaphore
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			// Check if Celestia Node is already installed
-			log.Printf("Checking Celestia Node installation on instance %s...", inst.PublicIP)
+			log.Printf("Checking Celestia Node installation on instance %s (%s)...", inst.Name, inst.PublicIP)
+
+			// Check if Celestia Node is installed
 			checkCmd := `
-if [ -x "/usr/local/bin/celestia" ] || [ -x "$HOME/go/bin/celestia" ] || [ -x "/root/celestia-node-temp/celestia" ] || command -v celestia > /dev/null 2>&1; then
+if [ -d "$HOME/celestia-node" ] && [ -x "$HOME/go/bin/celestia" ]; then
     echo "Celestia Node is installed"
     exit 0
 else
@@ -313,26 +331,26 @@ else
 fi`
 			err := m.sshManager.ExecuteCommand(inst.PublicIP, checkCmd)
 			if err == nil {
-				log.Printf("Celestia Node is already installed on instance %s", inst.PublicIP)
+				log.Printf("Celestia Node is already installed on instance %s (%s)", inst.Name, inst.PublicIP)
 				return
 			}
 
-			log.Printf("Installing Celestia Node on instance %s...", inst.PublicIP)
+			log.Printf("Installing Celestia Node on instance %s (%s)...", inst.Name, inst.PublicIP)
 
 			// Copy the installation script to the remote machine
 			if err := m.sshManager.CopyFile(inst.PublicIP, "scripts/install_celestia_node.sh", "install_celestia_node.sh"); err != nil {
-				errChan <- fmt.Errorf("failed to copy installation script to instance %s: %w", inst.PublicIP, err)
+				errChan <- fmt.Errorf("failed to copy installation script to instance %s (%s): %w", inst.Name, inst.PublicIP, err)
 				return
 			}
 
 			// Make the script executable and run it
 			if err := m.sshManager.ExecuteCommand(inst.PublicIP, fmt.Sprintf("chmod +x install_celestia_node.sh && ./install_celestia_node.sh %s", m.config.CelestiaNodeVersion)); err != nil {
-				errChan <- fmt.Errorf("failed to execute Celestia Node installation script on instance %s: %w", inst.PublicIP, err)
+				errChan <- fmt.Errorf("failed to execute Celestia Node installation script on instance %s (%s): %w", inst.Name, inst.PublicIP, err)
 				return
 			}
 
-			log.Printf("Successfully installed Celestia Node on instance %s", inst.PublicIP)
-		}(instance)
+			log.Printf("Successfully installed Celestia Node on instance %s (%s)", inst.Name, inst.PublicIP)
+		}(instance, m.config.Instances[i])
 	}
 
 	// Wait for all goroutines to complete
@@ -423,40 +441,35 @@ func (m *TalisManager) createProjectIfNotExists(ctx context.Context, userID uint
 
 // createInstances creates the specified number of instances
 func (m *TalisManager) createInstances(ctx context.Context, userID, projectID uint) ([]uint, error) {
-	instanceIDs := make([]uint, 0, m.config.InstanceCount)
-	existingInstances := m.state.Instances[m.config.ProjectName]
-
-	// Create only the instances that don't exist yet
-	for i := 0; i < m.config.InstanceCount; i++ {
-		instanceName := fmt.Sprintf("%s-%d", m.config.ProjectName, i)
-
-		// Check if instance already exists
-		exists := false
-		for _, instance := range existingInstances {
-			if instance.Name == instanceName {
-				instanceIDs = append(instanceIDs, instance.ID)
-				exists = true
-				break
-			}
+	// Check if instances already exist in state
+	if len(m.state.Instances[m.config.ProjectName]) > 0 {
+		// Return existing instance IDs
+		var instanceIDs []uint
+		for _, instance := range m.state.Instances[m.config.ProjectName] {
+			instanceIDs = append(instanceIDs, instance.ID)
 		}
-
-		if !exists {
-			instanceID, err := m.createInstance(ctx, userID, projectID, i)
-			if err != nil {
-				return nil, fmt.Errorf("failed to create instance %d: %w", i+1, err)
-			}
-			instanceIDs = append(instanceIDs, instanceID)
-
-			// Add new instance to state
-			existingInstances = append(existingInstances, InstanceInfo{
-				ID:   instanceID,
-				Name: instanceName,
-			})
-		}
+		return instanceIDs, nil
 	}
 
-	// Update state with all instances
-	m.state.Instances[m.config.ProjectName] = existingInstances
+	// Create instances
+	var instanceIDs []uint
+	for i, instanceDef := range m.config.Instances {
+		log.Printf("Creating instance %d: %s...", i, instanceDef.Name)
+		instanceID, err := m.createInstance(ctx, userID, projectID, i, instanceDef)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create instance %d: %w", i, err)
+		}
+		instanceIDs = append(instanceIDs, instanceID)
+
+		// Add instance to state (without installation preferences)
+		m.state.Instances[m.config.ProjectName] = append(m.state.Instances[m.config.ProjectName], InstanceInfo{
+			ID:       instanceID,
+			Name:     instanceDef.Name,
+			PublicIP: "",
+		})
+	}
+
+	// Save state
 	if err := m.SaveState(m.state); err != nil {
 		return nil, fmt.Errorf("failed to save state: %w", err)
 	}
@@ -465,26 +478,26 @@ func (m *TalisManager) createInstances(ctx context.Context, userID, projectID ui
 }
 
 // createInstance creates a single instance
-func (m *TalisManager) createInstance(ctx context.Context, userID, projectID uint, instanceIndex int) (uint, error) {
+func (m *TalisManager) createInstance(ctx context.Context, userID, projectID uint, instanceIndex int, instanceDef config.InstanceDefinition) (uint, error) {
 	err := m.client.CreateInstance(ctx, []types.InstanceRequest{
 		{
-			Name:              fmt.Sprintf("%s-%d", m.config.ProjectName, instanceIndex),
+			Name:              fmt.Sprintf("%s-%s-%d", m.config.ProjectName, instanceDef.Name, instanceIndex),
 			OwnerID:           userID,
-			ProjectID:         projectID,
-			Provider:          m.config.InstanceConfig.Provider,
+			ProjectName:       m.config.ProjectName,
+			Provider:          instanceDef.InstanceConfig.Provider,
 			NumberOfInstances: 1,
 			Provision:         false,
-			Region:            m.config.InstanceConfig.Region,
-			Size:              m.config.InstanceConfig.Size,
-			Image:             m.config.InstanceConfig.Image,
-			Tags:              m.config.InstanceConfig.Tags,
-			SSHKeyName:        m.config.InstanceConfig.SSHKeyName,
-			SSHKeyPath:        m.config.InstanceConfig.SSHKeyPath,
+			Region:            instanceDef.InstanceConfig.Region,
+			Size:              instanceDef.InstanceConfig.Size,
+			Image:             instanceDef.InstanceConfig.Image,
+			Tags:              instanceDef.InstanceConfig.Tags,
+			SSHKeyName:        instanceDef.InstanceConfig.SSHKeyName,
+			SSHKeyPath:        instanceDef.InstanceConfig.SSHKeyPath,
 			Volumes: []types.VolumeConfig{
 				{
-					Name:       m.config.InstanceConfig.VolumeConfig.Name,
-					SizeGB:     m.config.InstanceConfig.VolumeConfig.SizeGB,
-					MountPoint: m.config.InstanceConfig.VolumeConfig.MountPoint,
+					Name:       instanceDef.InstanceConfig.VolumeConfig.Name,
+					SizeGB:     instanceDef.InstanceConfig.VolumeConfig.SizeGB,
+					MountPoint: instanceDef.InstanceConfig.VolumeConfig.MountPoint,
 				},
 			},
 		},
@@ -516,8 +529,8 @@ func (m *TalisManager) createInstance(ctx context.Context, userID, projectID uin
 // getPendingInstances retrieves all pending instances
 func (m *TalisManager) getPendingInstances(ctx context.Context, userID, projectID uint) ([]models.Instance, error) {
 	instances, err := m.client.ListProjectInstances(ctx, handlers.ProjectListInstancesParams{
-		ProjectID: projectID,
-		OwnerID:   userID,
+		Name:    m.config.ProjectName,
+		OwnerID: userID,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list project instances: %w", err)
@@ -579,10 +592,10 @@ func (m *TalisManager) deleteInstances(ctx context.Context, userID, projectID ui
 		}
 
 		if shouldDelete {
-			err := m.client.DeleteInstances(ctx, types.DeleteInstancesRequest{
-				OwnerID:     userID,
-				ProjectID:   projectID,
-				InstanceIDs: []uint{instance.ID},
+			err := m.client.DeleteInstance(ctx, types.DeleteInstancesRequest{
+				OwnerID:       userID,
+				ProjectName:   m.config.ProjectName,
+				InstanceNames: []string{instance.Name},
 			})
 			if err != nil {
 				return fmt.Errorf("failed to delete instance %d: %w", instance.ID, err)
@@ -616,10 +629,20 @@ func (m *TalisManager) DeleteAllInstances(ctx context.Context) error {
 		return fmt.Errorf("project %s not found", m.config.ProjectName)
 	}
 
-	// Get user ID
+	// Get user ID or create a user if not found
 	userID := state.UserID
 	if userID == 0 {
-		return fmt.Errorf("user ID not found")
+		log.Println("User ID not found in state, creating a new user...")
+		userID, err = m.createUserIfNotExists(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to create user: %w", err)
+		}
+
+		// Update state with the new user ID
+		m.state.UserID = userID
+		if err := m.SaveState(m.state); err != nil {
+			return fmt.Errorf("failed to save state with new user ID: %w", err)
+		}
 	}
 
 	// Get all instance IDs for the project
@@ -633,11 +656,17 @@ func (m *TalisManager) DeleteAllInstances(ctx context.Context) error {
 		return nil
 	}
 
-	// Delete all instances
+	// Delete the instances
+	log.Printf("Deleting %d instances for project %s...", len(instanceIDs), m.config.ProjectName)
 	if err := m.deleteInstances(ctx, userID, projectID, instanceIDs); err != nil {
 		return fmt.Errorf("failed to delete instances: %w", err)
 	}
 
-	log.Printf("Successfully deleted all instances for project %s", m.config.ProjectName)
+	// Clear instances from state
+	m.state.Instances[m.config.ProjectName] = []InstanceInfo{}
+	if err := m.SaveState(m.state); err != nil {
+		return fmt.Errorf("failed to save state after deleting instances: %w", err)
+	}
+
 	return nil
 }
