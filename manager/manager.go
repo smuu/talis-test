@@ -592,7 +592,7 @@ func (m *TalisManager) deleteInstances(ctx context.Context, userID, projectID ui
 		}
 
 		if shouldDelete {
-			err := m.client.DeleteInstance(ctx, types.DeleteInstancesRequest{
+			err := m.client.DeleteInstances(ctx, types.DeleteInstancesRequest{
 				OwnerID:       userID,
 				ProjectName:   m.config.ProjectName,
 				InstanceNames: []string{instance.Name},

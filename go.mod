@@ -4,6 +4,7 @@ go 1.24
 
 require (
 	github.com/celestiaorg/talis v0.0.5
+	github.com/joho/godotenv v1.5.1
 	golang.org/x/crypto v0.37.0
 )
 
@@ -17,7 +18,6 @@ require (
 	github.com/hashicorp/go-retryablehttp v0.7.7 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
-	github.com/joho/godotenv v1.5.1 // indirect
 	github.com/klauspost/compress v1.17.11 // indirect
 	github.com/lib/pq v1.10.9 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
@@ -34,5 +34,3 @@ require (
 	golang.org/x/time v0.9.0 // indirect
 	gorm.io/gorm v1.26.0 // indirect
 )
-
-replace github.com/celestiaorg/talis => /Users/peter/git/celestiaorg/talis/branches/smuu/20250502-apikey-header-for-client
