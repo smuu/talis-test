@@ -7,6 +7,13 @@ echo "Starting Go installation..."
 
 # Install required packages
 echo "Installing required packages..."
+
+# Check if apt is locked and wait until it's available
+while sudo lsof /var/lib/apt/lists/lock >/dev/null 2>&1 || sudo lsof /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || sudo lsof /var/lib/dpkg/lock >/dev/null 2>&1; do
+    echo "Waiting for apt locks to be released..."
+    sleep 5
+done
+
 sudo apt update
 sudo apt install -y curl tar wget aria2 clang pkg-config libssl-dev jq build-essential git make ncdu
 

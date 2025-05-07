@@ -38,8 +38,10 @@ func main() {
 		log.Printf("Warning: Error loading .env file: %v", err)
 	}
 
-	// Parse command line flags for delete operation
+	// Parse command line flags
 	deleteFlag := flag.Bool("delete", false, "Delete all deployed instances")
+	setupNetworkFlag := flag.Bool("setup-network", false, "Set up Celestia network on deployed instances")
+	chainIDFlag := flag.String("chain-id", "test-chain", "Chain ID for the Celestia network")
 	flag.Parse()
 
 	// Define your deployment configuration here
@@ -49,7 +51,7 @@ func main() {
 		Nodes: []NodeConfig{
 			{
 				Type:       ValidatorNode,
-				Count:      1,
+				Count:      4,
 				Region:     "nyc1",
 				Size:       "s-2vcpu-4gb",
 				VolumeSize: 30,
@@ -82,6 +84,16 @@ func main() {
 			log.Fatalf("Failed to delete instances: %v", err)
 		}
 		log.Println("Instance deletion completed successfully")
+		return
+	}
+
+	// If setup-network flag is set, set up the Celestia network and exit
+	if *setupNetworkFlag {
+		log.Println("Setting up Celestia network...")
+		if err := mgr.SetupCelestiaNetwork(ctx, *chainIDFlag); err != nil {
+			log.Fatalf("Failed to set up Celestia network: %v", err)
+		}
+		log.Println("Celestia network setup completed successfully")
 		return
 	}
 

@@ -181,6 +181,7 @@ fi
 }
 
 // CopyFile copies a local file to a remote machine
+// TODO: use scp instead
 func (s *SSHManager) CopyFile(host, localPath, remotePath string) error {
 	// Read private key
 	key, err := os.ReadFile(s.config.PrivateKey)

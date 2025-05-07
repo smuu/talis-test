@@ -670,3 +670,36 @@ func (m *TalisManager) DeleteAllInstances(ctx context.Context) error {
 
 	return nil
 }
+
+// SetupCelestiaNetwork sets up a Celestia network on the instances
+func (m *TalisManager) SetupCelestiaNetwork(ctx context.Context, chainID string) error {
+	// Load state
+	state, err := m.LoadState()
+	if err != nil {
+		return fmt.Errorf("failed to load state: %w", err)
+	}
+	m.state = state
+
+	// Create Celestia network
+	network := NewCelestiaNetwork(chainID, m.sshManager)
+
+	// Create genesis nodes for each instance
+	for i, instance := range m.state.Instances[m.config.ProjectName] {
+		if instance.PublicIP == "" {
+			return fmt.Errorf("instance %d has no public IP", instance.ID)
+		}
+
+		name := fmt.Sprintf("val%d", i)
+		homeDir := "/root/.celestia-app"
+		if err := network.CreateGenesisNode(ctx, name, homeDir, instance.PublicIP); err != nil {
+			return fmt.Errorf("failed to create genesis node %s: %w", name, err)
+		}
+	}
+
+	// Setup the network
+	if err := network.SetupNetwork(ctx); err != nil {
+		return fmt.Errorf("failed to setup network: %w", err)
+	}
+
+	return nil
+}
