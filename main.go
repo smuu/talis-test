@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/celestiaorg/talis-test/config"
 	"github.com/celestiaorg/talis-test/manager"
@@ -48,14 +49,14 @@ func main() {
 		Nodes: []NodeConfig{
 			{
 				Type:       ValidatorNode,
-				Count:      4,
+				Count:      1,
 				Region:     "nyc1",
 				Size:       "s-2vcpu-4gb",
 				VolumeSize: 30,
 			},
 			{
 				Type:       BridgeNode,
-				Count:      1,
+				Count:      0,
 				Region:     "fra1",
 				Size:       "s-4vcpu-8gb",
 				VolumeSize: 50,
@@ -158,7 +159,7 @@ func getConfiguration(nodes []NodeConfig) config.Config {
 
 			// Create the instance definition
 			instance := config.NewInstanceDefinition(
-				string(nodeConfig.Type)+"-"+fmt.Sprintf("%d", i),
+				string(nodeConfig.Type)+"-"+fmt.Sprintf("%d", i)+"-"+fmt.Sprint(time.Now().Unix()),
 				installApp,
 				installNode,
 			).

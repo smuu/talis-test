@@ -31,8 +31,6 @@ func NewTalisManager(config config.Config) (*TalisManager, error) {
 	opts.BaseURL = config.BaseURL
 	opts.APIKey = os.Getenv("TALIS_KEY")
 
-	fmt.Println("API Key:", opts.APIKey)
-
 	client, err := client.NewClient(opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create client: %w", err)
@@ -73,20 +71,20 @@ func (m *TalisManager) PrepareInfrastructure(ctx context.Context) error {
 	}
 
 	// Create project if not exists
-	projectID := state.Projects[m.config.ProjectName]
-	if projectID == 0 {
-		projectID, err = m.createProjectIfNotExists(ctx, userID)
+	projectName := state.Projects[m.config.ProjectName]
+	if projectName == "" {
+		projectName, err = m.createProjectIfNotExists(ctx, userID)
 		if err != nil {
 			return fmt.Errorf("failed to create project: %w", err)
 		}
-		state.Projects[m.config.ProjectName] = projectID
+		state.Projects[m.config.ProjectName] = projectName
 		if err := m.SaveState(state); err != nil {
 			return fmt.Errorf("failed to save state: %w", err)
 		}
 	}
 
 	// Create instances
-	instanceIDs, err := m.createInstances(ctx, userID, projectID)
+	instanceIDs, err := m.createInstances(ctx, userID, projectName)
 	if err != nil {
 		return fmt.Errorf("failed to create instances: %w", err)
 	}
@@ -415,7 +413,7 @@ func (m *TalisManager) createUserIfNotExists(ctx context.Context) (uint, error) 
 }
 
 // createProjectIfNotExists creates a project if it doesn't exist
-func (m *TalisManager) createProjectIfNotExists(ctx context.Context, userID uint) (uint, error) {
+func (m *TalisManager) createProjectIfNotExists(ctx context.Context, userID uint) (string, error) {
 	project, err := m.client.GetProject(ctx, handlers.ProjectGetParams{
 		Name:    m.config.ProjectName,
 		OwnerID: userID,
@@ -429,23 +427,23 @@ func (m *TalisManager) createProjectIfNotExists(ctx context.Context, userID uint
 				OwnerID:     userID,
 			})
 			if err != nil {
-				return 0, fmt.Errorf("failed to create project: %w", err)
+				return "", fmt.Errorf("failed to create project: %w", err)
 			}
-			return project.ID, nil
+			return project.Name, nil
 		}
-		return 0, fmt.Errorf("failed to get project: %w", err)
+		return "", fmt.Errorf("failed to get project: %w", err)
 	}
 
-	return project.ID, nil
+	return project.Name, nil
 }
 
 // createInstances creates the specified number of instances
-func (m *TalisManager) createInstances(ctx context.Context, userID, projectID uint) ([]uint, error) {
+func (m *TalisManager) createInstances(ctx context.Context, userID uint, projectName string) ([]uint, error) {
 	// Check if instances already exist in state
-	if len(m.state.Instances[m.config.ProjectName]) > 0 {
+	if len(m.state.Instances[projectName]) > 0 {
 		// Return existing instance IDs
 		var instanceIDs []uint
-		for _, instance := range m.state.Instances[m.config.ProjectName] {
+		for _, instance := range m.state.Instances[projectName] {
 			instanceIDs = append(instanceIDs, instance.ID)
 		}
 		return instanceIDs, nil
@@ -455,16 +453,16 @@ func (m *TalisManager) createInstances(ctx context.Context, userID, projectID ui
 	var instanceIDs []uint
 	for i, instanceDef := range m.config.Instances {
 		log.Printf("Creating instance %d: %s...", i, instanceDef.Name)
-		instanceID, err := m.createInstance(ctx, userID, projectID, i, instanceDef)
+		instanceID, err := m.createInstance(ctx, userID, projectName, i, instanceDef)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create instance %d: %w", i, err)
 		}
 		instanceIDs = append(instanceIDs, instanceID)
 
 		// Add instance to state (without installation preferences)
-		m.state.Instances[m.config.ProjectName] = append(m.state.Instances[m.config.ProjectName], InstanceInfo{
+		m.state.Instances[projectName] = append(m.state.Instances[projectName], InstanceInfo{
 			ID:       instanceID,
-			Name:     instanceDef.Name,
+			Name:     instanceDef.Name + "-0",
 			PublicIP: "",
 		})
 	}
@@ -478,14 +476,14 @@ func (m *TalisManager) createInstances(ctx context.Context, userID, projectID ui
 }
 
 // createInstance creates a single instance
-func (m *TalisManager) createInstance(ctx context.Context, userID, projectID uint, instanceIndex int, instanceDef config.InstanceDefinition) (uint, error) {
+func (m *TalisManager) createInstance(ctx context.Context, userID uint, projectName string, instanceIndex int, instanceDef config.InstanceDefinition) (uint, error) {
 	err := m.client.CreateInstance(ctx, []types.InstanceRequest{
 		{
-			Name:              fmt.Sprintf("%s-%s-%d", m.config.ProjectName, instanceDef.Name, instanceIndex),
+			Name:              instanceDef.Name,
 			OwnerID:           userID,
-			ProjectName:       m.config.ProjectName,
+			ProjectName:       projectName,
 			Provider:          instanceDef.InstanceConfig.Provider,
-			NumberOfInstances: 1,
+			NumberOfInstances: 1, // Only tested with 1
 			Provision:         false,
 			Region:            instanceDef.InstanceConfig.Region,
 			Size:              instanceDef.InstanceConfig.Size,
@@ -506,7 +504,7 @@ func (m *TalisManager) createInstance(ctx context.Context, userID, projectID uin
 		return 0, fmt.Errorf("failed to create instance: %w", err)
 	}
 
-	pendingInstances, err := m.getPendingInstances(ctx, userID, projectID)
+	pendingInstances, err := m.getPendingInstances(ctx, userID, projectName)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get pending instances: %w", err)
 	}
@@ -527,9 +525,9 @@ func (m *TalisManager) createInstance(ctx context.Context, userID, projectID uin
 }
 
 // getPendingInstances retrieves all pending instances
-func (m *TalisManager) getPendingInstances(ctx context.Context, userID, projectID uint) ([]models.Instance, error) {
+func (m *TalisManager) getPendingInstances(ctx context.Context, userID uint, projectName string) ([]models.Instance, error) {
 	instances, err := m.client.ListProjectInstances(ctx, handlers.ProjectListInstancesParams{
-		Name:    m.config.ProjectName,
+		Name:    projectName,
 		OwnerID: userID,
 	})
 	if err != nil {
@@ -578,8 +576,8 @@ func (m *TalisManager) waitForInstancesToBeReady(ctx context.Context, instanceID
 }
 
 // deleteInstances deletes all specified instances
-func (m *TalisManager) deleteInstances(ctx context.Context, userID, projectID uint, instanceIDs []uint) error {
-	projectInstances := m.state.Instances[m.config.ProjectName]
+func (m *TalisManager) deleteInstances(ctx context.Context, userID uint, projectName string, instanceIDs []uint) error {
+	projectInstances := m.state.Instances[projectName]
 	remainingInstances := make([]InstanceInfo, 0, len(projectInstances))
 
 	for _, instance := range projectInstances {
@@ -591,10 +589,12 @@ func (m *TalisManager) deleteInstances(ctx context.Context, userID, projectID ui
 			}
 		}
 
+		fmt.Println("Instance", instance.Name, "should be deleted:", shouldDelete)
+
 		if shouldDelete {
 			err := m.client.DeleteInstances(ctx, types.DeleteInstancesRequest{
 				OwnerID:       userID,
-				ProjectName:   m.config.ProjectName,
+				ProjectName:   projectName,
 				InstanceNames: []string{instance.Name},
 			})
 			if err != nil {
@@ -606,7 +606,7 @@ func (m *TalisManager) deleteInstances(ctx context.Context, userID, projectID ui
 	}
 
 	// Update state with remaining instances
-	m.state.Instances[m.config.ProjectName] = remainingInstances
+	m.state.Instances[projectName] = remainingInstances
 	if err := m.SaveState(m.state); err != nil {
 		return fmt.Errorf("failed to save state: %w", err)
 	}
@@ -624,8 +624,8 @@ func (m *TalisManager) DeleteAllInstances(ctx context.Context) error {
 	m.state = state
 
 	// Get project ID
-	projectID := state.Projects[m.config.ProjectName]
-	if projectID == 0 {
+	projectName := state.Projects[m.config.ProjectName]
+	if projectName == "" {
 		return fmt.Errorf("project %s not found", m.config.ProjectName)
 	}
 
@@ -657,8 +657,8 @@ func (m *TalisManager) DeleteAllInstances(ctx context.Context) error {
 	}
 
 	// Delete the instances
-	log.Printf("Deleting %d instances for project %s...", len(instanceIDs), m.config.ProjectName)
-	if err := m.deleteInstances(ctx, userID, projectID, instanceIDs); err != nil {
+	log.Printf("Deleting %d instances for project %s...", len(instanceIDs), projectName)
+	if err := m.deleteInstances(ctx, userID, projectName, instanceIDs); err != nil {
 		return fmt.Errorf("failed to delete instances: %w", err)
 	}
 

@@ -3,7 +3,7 @@ module github.com/celestiaorg/talis-test
 go 1.24
 
 require (
-	github.com/celestiaorg/talis v0.0.5
+	github.com/celestiaorg/talis v0.0.7-0.20250506143246-86b92158041c
 	github.com/joho/godotenv v1.5.1
 	golang.org/x/crypto v0.37.0
 )

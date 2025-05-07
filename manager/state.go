@@ -18,7 +18,7 @@ type InstanceInfo struct {
 // State represents the persisted state of the application
 type State struct {
 	UserID    uint                      `json:"user_id"`
-	Projects  map[string]uint           `json:"projects"`  // Map of project name to project ID
+	Projects  map[string]string         `json:"projects"`  // Map of project name to project ID
 	Instances map[string][]InstanceInfo `json:"instances"` // Map of project name to instance info
 }
 
@@ -62,7 +62,7 @@ func (m *TalisManager) LoadState() (State, error) {
 	if err != nil {
 		if os.IsNotExist(err) {
 			return State{
-				Projects:  make(map[string]uint),
+				Projects:  make(map[string]string),
 				Instances: make(map[string][]InstanceInfo),
 			}, nil
 		}
@@ -76,7 +76,7 @@ func (m *TalisManager) LoadState() (State, error) {
 
 	// Initialize maps if they're nil (for backward compatibility)
 	if state.Projects == nil {
-		state.Projects = make(map[string]uint)
+		state.Projects = make(map[string]string)
 	}
 	if state.Instances == nil {
 		state.Instances = make(map[string][]InstanceInfo)
