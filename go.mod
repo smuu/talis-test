@@ -4,7 +4,7 @@ go 1.24
 
 require (
 	github.com/celestiaorg/celestia-app/v3 v3.4.2-mammoth-v0.7.0
-	github.com/celestiaorg/talis v0.0.7-0.20250506143246-86b92158041c
+	github.com/celestiaorg/talis v0.0.7
 	github.com/cosmos/cosmos-sdk v0.46.16
 	github.com/joho/godotenv v1.5.1
 	github.com/tendermint/tendermint v0.34.29

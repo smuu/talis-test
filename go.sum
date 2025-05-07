@@ -260,8 +260,8 @@ github.com/celestiaorg/nmt v0.23.0 h1:cfYy//hL1HeDSH0ub3CPlJuox5U5xzgg4JGZrw23I/
 github.com/celestiaorg/nmt v0.23.0/go.mod h1:kYfIjRq5rmA2mJnv41GLWkxn5KyLNPlma3v5Q68rHdI=
 github.com/celestiaorg/rsmt2d v0.14.0 h1:L7XJ3tRJDY8sQcvCjzHq0L7JmsmaSD+VItymIYFLqYc=
 github.com/celestiaorg/rsmt2d v0.14.0/go.mod h1:4kxqiTdFev49sGiKXTDjohbWYOG5GlcIfftTgaBJnpc=
-github.com/celestiaorg/talis v0.0.7-0.20250506143246-86b92158041c h1:DdUf1DPsKh6rqxykStjWzQCNF4MIG2m301xgN4BbGGw=
-github.com/celestiaorg/talis v0.0.7-0.20250506143246-86b92158041c/go.mod h1:pRULHfws3+Nd4/2nF1gNx60Tn3II9xd7roiexGS1IWk=
+github.com/celestiaorg/talis v0.0.7 h1:PM5rZeKXfcvgt9o6eAT+6p81DD9r+xglASCJlDDLImE=
+github.com/celestiaorg/talis v0.0.7/go.mod h1:pRULHfws3+Nd4/2nF1gNx60Tn3II9xd7roiexGS1IWk=
 github.com/cenkalti/backoff v2.2.1+incompatible h1:tNowT99t7UNflLxfYYSlKYsBpXdEet03Pg2g16Swow4=
 github.com/cenkalti/backoff/v4 v4.2.1 h1:y4OZtCnogmCPw98Zjyt5a6+QwPLGkiQsYW5oUqylYbM=
 github.com/cenkalti/backoff/v4 v4.2.1/go.mod h1:Y3VNntkOUPxTVeUxJ/G5vcM//AlwfmyYozVcomhLiZE=
