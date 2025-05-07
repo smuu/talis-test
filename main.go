@@ -54,7 +54,7 @@ func main() {
 		Nodes: []NodeConfig{
 			{
 				Type:       ValidatorNode,
-				Count:      21,
+				Count:      1,
 				Region:     "nyc1",
 				Size:       "s-2vcpu-4gb",
 				VolumeSize: 30,
@@ -139,13 +139,13 @@ func main() {
 	// If no flags are set, show usage
 	if !*infraFlag && !*prepareToolsFlag && !*prepareChainFlag && !*startFlag && !*deleteFlag {
 		fmt.Println("No action specified. Use one of the following flags:")
-		fmt.Println("  -infra         Create infrastructure (servers with Talis)")
-		fmt.Println("  -prepare-tools Install required tools (Go, Celestia)")
-		fmt.Println("  -prepare-chain Create and add chain files")
-		fmt.Println("  -start         Start the validators")
-		fmt.Println("  -delete        Delete all deployed instances")
+		fmt.Println("  --infra         Create infrastructure (servers with Talis)")
+		fmt.Println("  --prepare-tools Install required tools (Go, Celestia)")
+		fmt.Println("  --prepare-chain Create and add chain files")
+		fmt.Println("  --start         Start the validators")
+		fmt.Println("  --delete        Delete all deployed instances")
 		fmt.Println("\nAdditional options:")
-		fmt.Println("  -chain-id      Chain ID for the Celestia network (default: test-chain)")
+		fmt.Println("  --chain-id      Chain ID for the Celestia network (default: test-chain)")
 	}
 }
 
