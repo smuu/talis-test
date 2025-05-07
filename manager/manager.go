@@ -90,7 +90,7 @@ func (m *TalisManager) PrepareInfrastructure(ctx context.Context) error {
 	}
 
 	// Wait for instances to be ready
-	if err := m.waitForInstancesToBeReady(ctx, instanceIDs, 5*time.Minute); err != nil {
+	if err := m.waitForInstancesToBeReady(ctx, instanceIDs, 15*time.Minute); err != nil {
 		return fmt.Errorf("failed to wait for instances: %w", err)
 	}
 
@@ -699,6 +699,73 @@ func (m *TalisManager) SetupCelestiaNetwork(ctx context.Context, chainID string)
 	// Setup the network
 	if err := network.SetupNetwork(ctx); err != nil {
 		return fmt.Errorf("failed to setup network: %w", err)
+	}
+
+	return nil
+}
+
+// SetupCelestiaAppService sets up the systemd service for Celestia App validators
+func (m *TalisManager) SetupCelestiaAppService(ctx context.Context) error {
+	// Load state
+	state, err := m.LoadState()
+	if err != nil {
+		return fmt.Errorf("failed to load state: %w", err)
+	}
+	m.state = state
+
+	// Create a semaphore to limit concurrent operations
+	sem := make(chan struct{}, 10)
+	errChan := make(chan error, len(m.state.Instances[m.config.ProjectName]))
+	var wg sync.WaitGroup
+
+	// For each instance, check and setup Celestia App service if needed
+	for i, instance := range m.state.Instances[m.config.ProjectName] {
+		if instance.PublicIP == "" {
+			log.Printf("Skipping instance %d: no public IP", instance.ID)
+			continue
+		}
+
+		// Skip instances where Celestia App installation is not requested
+		if i >= len(m.config.Instances) || !m.config.Instances[i].InstallCelestiaApp {
+			log.Printf("Skipping Celestia App service setup on instance %s (%s): not requested", instance.Name, instance.PublicIP)
+			continue
+		}
+
+		wg.Add(1)
+		go func(inst InstanceInfo) {
+			defer wg.Done()
+
+			// Acquire semaphore
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			log.Printf("Setting up Celestia App service on instance %s (%s)...", inst.Name, inst.PublicIP)
+
+			// Copy the service setup script to the remote machine
+			if err := m.sshManager.CopyFile(inst.PublicIP, "scripts/setup_celestia_appd_service.sh", "setup_celestia_appd_service.sh"); err != nil {
+				errChan <- fmt.Errorf("failed to copy service setup script to instance %s (%s): %w", inst.Name, inst.PublicIP, err)
+				return
+			}
+
+			// Make the script executable and run it
+			if err := m.sshManager.ExecuteCommand(inst.PublicIP, "chmod +x setup_celestia_appd_service.sh && sudo ./setup_celestia_appd_service.sh"); err != nil {
+				errChan <- fmt.Errorf("failed to execute service setup script on instance %s (%s): %w", inst.Name, inst.PublicIP, err)
+				return
+			}
+
+			log.Printf("Successfully set up Celestia App service on instance %s (%s)", inst.Name, inst.PublicIP)
+		}(instance)
+	}
+
+	// Wait for all goroutines to complete
+	wg.Wait()
+	close(errChan)
+
+	// Check for any errors
+	for err := range errChan {
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil

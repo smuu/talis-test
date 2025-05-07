@@ -39,8 +39,11 @@ func main() {
 	}
 
 	// Parse command line flags
+	infraFlag := flag.Bool("infra", false, "Create infrastructure (servers with Talis)")
+	prepareToolsFlag := flag.Bool("prepare-tools", false, "Install required tools (Go, Celestia)")
+	prepareChainFlag := flag.Bool("prepare-chain", false, "Create and add chain files")
+	startFlag := flag.Bool("start", false, "Start the validators")
 	deleteFlag := flag.Bool("delete", false, "Delete all deployed instances")
-	setupNetworkFlag := flag.Bool("setup-network", false, "Set up Celestia network on deployed instances")
 	chainIDFlag := flag.String("chain-id", "test-chain", "Chain ID for the Celestia network")
 	flag.Parse()
 
@@ -51,17 +54,10 @@ func main() {
 		Nodes: []NodeConfig{
 			{
 				Type:       ValidatorNode,
-				Count:      4,
+				Count:      21,
 				Region:     "nyc1",
 				Size:       "s-2vcpu-4gb",
 				VolumeSize: 30,
-			},
-			{
-				Type:       BridgeNode,
-				Count:      0,
-				Region:     "fra1",
-				Size:       "s-4vcpu-8gb",
-				VolumeSize: 50,
 			},
 		},
 	}
@@ -87,25 +83,8 @@ func main() {
 		return
 	}
 
-	// If setup-network flag is set, set up the Celestia network and exit
-	if *setupNetworkFlag {
-		log.Println("Setting up Celestia network...")
-		if err := mgr.SetupCelestiaNetwork(ctx, *chainIDFlag); err != nil {
-			log.Fatalf("Failed to set up Celestia network: %v", err)
-		}
-		log.Println("Celestia network setup completed successfully")
-		return
-	}
-
-	// Define which actions to perform
-	// Set these to true/false based on what you want to do
-	runPrepare := true
-	runInstallGo := true
-	runInstallCelestiaApp := true
-	runInstallCelestiaNode := true
-
-	// Run the preparation stage if configured
-	if runPrepare {
+	// Run infrastructure setup if requested
+	if *infraFlag {
 		log.Println("Preparing infrastructure...")
 		if err := mgr.PrepareInfrastructure(ctx); err != nil {
 			log.Fatalf("Failed to prepare infrastructure: %v", err)
@@ -113,31 +92,60 @@ func main() {
 		log.Println("Infrastructure preparation completed successfully")
 	}
 
-	// Run the Go installation stage if configured
-	if runInstallGo {
+	// Run tools installation if requested
+	if *prepareToolsFlag {
+		log.Println("Installing required tools...")
+
+		// Install Go
 		log.Println("Installing Go on instances...")
 		if err := mgr.InstallGoOnInstances(ctx); err != nil {
 			log.Fatalf("Failed to install Go on instances: %v", err)
 		}
 		log.Println("Go installation completed successfully")
-	}
 
-	// Run the Celestia App installation stage if configured
-	if runInstallCelestiaApp {
+		// Install Celestia App
 		log.Println("Installing Celestia App on configured instances...")
 		if err := mgr.InstallCelestiaAppOnInstances(ctx); err != nil {
 			log.Fatalf("Failed to install Celestia App on instances: %v", err)
 		}
 		log.Println("Celestia App installation completed successfully")
-	}
 
-	// Run the Celestia Node installation stage if configured
-	if runInstallCelestiaNode {
+		// Install Celestia Node
 		log.Println("Installing Celestia Node on configured instances...")
 		if err := mgr.InstallCelestiaNodeOnInstances(ctx); err != nil {
 			log.Fatalf("Failed to install Celestia Node on instances: %v", err)
 		}
 		log.Println("Celestia Node installation completed successfully")
+	}
+
+	// Run chain preparation if requested
+	if *prepareChainFlag {
+		log.Println("Setting up Celestia network...")
+		if err := mgr.SetupCelestiaNetwork(ctx, *chainIDFlag); err != nil {
+			log.Fatalf("Failed to set up Celestia network: %v", err)
+		}
+		log.Println("Celestia network setup completed successfully")
+	}
+
+	// Run validator start if requested
+	if *startFlag {
+		log.Println("Starting Celestia App service on configured instances...")
+		if err := mgr.SetupCelestiaAppService(ctx); err != nil {
+			log.Fatalf("Failed to start Celestia App service: %v", err)
+		}
+		log.Println("Celestia App service started successfully")
+	}
+
+	// If no flags are set, show usage
+	if !*infraFlag && !*prepareToolsFlag && !*prepareChainFlag && !*startFlag && !*deleteFlag {
+		fmt.Println("No action specified. Use one of the following flags:")
+		fmt.Println("  -infra         Create infrastructure (servers with Talis)")
+		fmt.Println("  -prepare-tools Install required tools (Go, Celestia)")
+		fmt.Println("  -prepare-chain Create and add chain files")
+		fmt.Println("  -start         Start the validators")
+		fmt.Println("  -delete        Delete all deployed instances")
+		fmt.Println("\nAdditional options:")
+		fmt.Println("  -chain-id      Chain ID for the Celestia network (default: test-chain)")
 	}
 }
 

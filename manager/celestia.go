@@ -209,6 +209,7 @@ func (n *CelestiaNode) setupConfig(peers []string) error {
 	cfg.RPC.ListenAddress = "tcp://0.0.0.0:26657"
 	cfg.P2P.PersistentPeers = strings.Join(peers, ",")
 	cfg.Instrumentation.Prometheus = true
+	cfg.P2P.ListenAddress = "tcp://" + n.publicIP + ":26656"
 
 	// Create a temporary file to write the config
 	tmpDir, err := os.MkdirTemp("", "celestia-config-*")
