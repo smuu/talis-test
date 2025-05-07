@@ -125,8 +125,8 @@ func DefaultConfig() Config {
 		SSHUsername:         "root",
 		SSHPrivateKeyPath:   "~/.ssh/digitalocean",
 		GoVersion:           "1.23.0",
-		CelestiaAppVersion:  "v3.4.2-mammoth-v0.7.0",
-		CelestiaNodeVersion: "v0.21.9-mammoth-v0.0.16",
+		CelestiaAppVersion:  "v3.4.2",
+		CelestiaNodeVersion: "v0.21.9",
 		Instances: []InstanceDefinition{
 			NewInstanceDefinition("default", true, false),
 		},

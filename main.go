@@ -54,7 +54,7 @@ func main() {
 		Nodes: []NodeConfig{
 			{
 				Type:       ValidatorNode,
-				Count:      1,
+				Count:      4,
 				Region:     "nyc1",
 				Size:       "s-2vcpu-4gb",
 				VolumeSize: 30,
